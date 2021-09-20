@@ -149,6 +149,55 @@ const RootQuery = new GraphQLObjectType({
   },
 });
 
+const mutation = new GraphQLObjectType({
+  name: "Mutation",
+  fields: () => ({
+    addOrder: {
+      type: Order,
+      args: {
+        customerId: { type: new GraphQLNonNull(GraphQLString) },
+        restaurantId: { type: new GraphQLNonNull(GraphQLString) },
+        order: { type: new GraphQLNonNull(GraphQLList(GraphQLString)) },
+      },
+      resolve(parentValue, args) {
+        let { customerId, restaurantId, order } = args;
+        return axios
+          .post(`http://localhost:4200/orders`, {
+            customerId,
+            restaurantId,
+            order,
+          })
+          .then((res) => res.data);
+      },
+    },
+    updateOrder: {
+      type: Order,
+      args: {
+        id: { type: new GraphQLNonNull(GraphQLString) },
+        order: { type: new GraphQLNonNull(GraphQLList(GraphQLString)) },
+      },
+      resolve(parentValue, args) {
+        let { id, order } = args;
+        return axios
+          .patch(`http://localhost:4200/orders/${id}`, {
+            order,
+          })
+          .then((res) => res.data);
+      },
+    },
+    deleteOrder: {
+      type: Order,
+      args: { id: { type: new GraphQLNonNull(GraphQLString) } },
+      resolve(parentValue, args) {
+        let { id } = args;
+        return axios
+          .delete(`http://localhost:4200/orders/${id}`)
+          .then((res) => res.data);
+      },
+    },
+  }),
+});
 module.exports = new GraphQLSchema({
   query: RootQuery,
+  mutation,
 });
