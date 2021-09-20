@@ -1,12 +1,20 @@
 const graphql = require("graphql");
-const axios = require("axios").default;
+const axios = require("axios");
+
 const {
   GraphQLString,
   GraphQLInt,
-  GraphQLList,
   GraphQLObjectType,
   GraphQLSchema,
+  GraphQLList,
+  GraphQLNonNull,
 } = graphql;
+
+const {
+  Page,
+  convertNodeToCursor,
+  convertCursorToNodeId,
+} = require("./pagination");
 
 const MenuItem = new GraphQLObjectType({
   name: "MenuItemType",
@@ -52,16 +60,52 @@ const RootQuery = new GraphQLObjectType({
   name: "RootQueryType",
   fields: {
     restaurants: {
-      type: GraphQLList(Restaurant),
-      args: { first: { type: GraphQLInt }, offset: { type: GraphQLInt } },
+      type: Page(Restaurant),
+      args: {
+        first: { type: GraphQLInt },
+        afterCursor: { type: GraphQLString },
+      },
       resolve(parentValue, args) {
-        return axios
-          .get(
-            `http://localhost:4200/restaurants?_start=${args.offset}&_end=${
-              args.first + args.offset
-            }`
-          )
-          .then((res) => res.data);
+        let { first, afterCursor } = args;
+        let afterIndex = 0;
+
+        return axios.get(`http://localhost:4200/restaurants`).then((res) => {
+          let data = res.data;
+
+          if (typeof afterCursor === "string") {
+            /* Extracting nodeId from afterCursor */
+            let nodeId = convertCursorToNodeId(afterCursor);
+            /* Finding the index of nodeId */
+            let nodeIndex = data.findIndex((datum) => datum.id === nodeId);
+            if (nodeIndex >= 0) {
+              afterIndex = nodeIndex + 1; // 1 is added to exclude the afterIndex node and include items after it
+            }
+          }
+
+          const slicedData = data.slice(afterIndex, afterIndex + first);
+          const edges = slicedData.map((node) => ({
+            node,
+            cursor: convertNodeToCursor(node),
+          }));
+
+          let startCursor,
+            endCursor = null;
+          if (edges.length > 0) {
+            startCursor = convertNodeToCursor(edges[0].node);
+            endCursor = convertNodeToCursor(edges[edges.length - 1].node);
+          }
+          let hasNextPage = data.length > afterIndex + first;
+
+          return {
+            totalCount: data.length,
+            edges,
+            pageInfo: {
+              startCursor,
+              endCursor,
+              hasNextPage,
+            },
+          };
+        });
       },
     },
     restaurant: {
@@ -98,7 +142,7 @@ const RootQuery = new GraphQLObjectType({
       type: GraphQLList(Order),
       resolve(parentValue, args) {
         return axios
-          .get("http://localhost:4200/orders")
+          .get(`http://localhost:4200/orders`)
           .then((res) => res.data);
       },
     },
